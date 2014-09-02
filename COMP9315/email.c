@@ -120,7 +120,7 @@ email_in(PG_FUNCTION_ARGS)
 		 errmsg("Error: Domain part must contain at least one '.'")));  
     	}
 	checkString(str);
-	result = (Email *) palloc0(sizeof(Email)); // 129 * 2
+	result = (Email *) palloc0(sizeof(Email)); 
 	//Now we copy the content of email address to our data
 	//Remember the length of the local
 
@@ -187,7 +187,7 @@ void checkString(char *str) {
     	if(!isalnum(*(str-1))){
         	ereport(ERROR, 
 		(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-		errmsg("Error: Only a letter or digit can end a word")));
+		errmsg("Error: Only a letter or dtempigit can end a word")));
     	}
 
 }
@@ -196,7 +196,7 @@ PG_FUNCTION_INFO_V1(email_out);
 Datum email_out(PG_FUNCTION_ARGS)
 {
 	//Format of the email contain an # to signal the end of string 
-	//When output we need to getrid of this ending
+	//When output we need to getrid of this ending	
 	Email    *email = (Email *) PG_GETARG_POINTER(0);
 	char *result;
 	char *temp;
@@ -224,14 +224,15 @@ Datum email_recv(PG_FUNCTION_ARGS)
 
 	char *local;
 	char *domain;
-	char *in = (char *) PG_GETARG_POINTER(0);
+	Email *input = (Email *) PG_GETARG_POINTER(0);
+	char *in;
 	int count;
 	int isDomain;
 	char *str;	
-	char *delimiter;
 	Email    *result; 
 	
 	//Prepare the variable and testing input
+	in = input->data;
 	local = (char *) palloc0(129);
     	domain = (char *) palloc0(129);
 	*domain = '\0';
@@ -240,7 +241,7 @@ Datum email_recv(PG_FUNCTION_ARGS)
 	str = local;
 	count = 0;
 
-	while (*in != '\0') {
+	while (*in != '#') {
 		if (*in == '@') {
 			if (isDomain == 0) {
 				isDomain = 1;
@@ -248,18 +249,9 @@ Datum email_recv(PG_FUNCTION_ARGS)
 				*str = '\0';
 				str = domain;
 			}
-			else {
-				ereport(ERROR, 
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("Error: Cannot have more than one '@' in an email")));
-			}
 		}
 		else {
-			if (count == 128) {
-				ereport(ERROR, 
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("Error: Only 128 characters allowed in Local or Domain part")));
-			}
+			
 			*str++ = tolower(*in);
 			count++;
 		}
@@ -267,25 +259,11 @@ Datum email_recv(PG_FUNCTION_ARGS)
 	}
 
 	*str = '\0';
-	str = local;
-    	checkString(str);
-	str = domain;
-	//In the case of Domain part we have to add this check before the main check above
-	//Special check if there is a . exist in the string  
-	delimiter = strchr(domain,'.');
-   	if(delimiter==NULL){
-		ereport(ERROR, 
-		(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-		 errmsg("Error: Domain part must contain at least one '.'")));  
-    	}
-	checkString(str);
-	
+
 	//Merge both local and domain to 1 string 
 	result = (Email *) palloc0(sizeof(Email));
 	//Now we copy the content of email address to our data
 	//Remember the length of the local
-
-
 	//Adding the region to output result
 	memmove(result->data,local,strlen(local));
 	str = result->data;
@@ -300,32 +278,27 @@ Datum email_recv(PG_FUNCTION_ARGS)
 	//Now return the result and free the alloc before that
 	pfree(local);
 	pfree(domain);
+
 	PG_RETURN_POINTER(result);
 }
 
 PG_FUNCTION_INFO_V1(complex_send);
 Datum email_send(PG_FUNCTION_ARGS)
 {
-	char *result;
-	char *temp;
-	char *tempRun;	
-
 	StringInfoData buf;
-	Email *email = (Email *) PG_GETARG_POINTER(0);
+	Email *input = (Email *) PG_GETARG_POINTER(0);
+	int i;
+	char *str = (char*)palloc0(260);
+	char *temp = input->data;
+	i=0;
+	while(i<260){
+	  str[i]=temp[i];
+	  i++;	
+	}	
+	str[259]='\0';
 
-	result = (char *) palloc0(260);
-	tempRun = result;
-	temp = email->data;
-	while(*temp!='#'){
-		*tempRun = *temp;
-		temp++;
-		tempRun++;	
-	}
-	*tempRun='\0';	
-
-	
 	pq_begintypsend(&buf);
-	pq_sendstring(&buf, result);
+	pq_sendstring(&buf, str);
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
@@ -335,7 +308,6 @@ Datum email_send(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(email_eq); //Email1 = Email2
 Datum email_eq(PG_FUNCTION_ARGS)
 {
-
 	char* aLocal ;
 	char* bLocal ;
 	char* aDomain ;
@@ -751,7 +723,7 @@ Datum email_not_domain_eq(PG_FUNCTION_ARGS)
 	Email    *a = (Email *) PG_GETARG_POINTER(0);
 	Email    *b = (Email *) PG_GETARG_POINTER(1);
 
-	//Now we need to get the local length of input
+	//Now we need to get the local lenPG_RETURN_INT32(result);gth of input
 	delimiter = strchr(a->data,'@');
 	aLenghtLocal = delimiter - a->data;
 	delimiter = strchr(b->data,'@');
@@ -776,11 +748,12 @@ Datum email_not_domain_eq(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(!(strcmp(aDomain, bDomain) == 0));
 }
 
-PG_FUNCTION_INFO_V1(email_cmp);
 
-Datum
-email_cmp(PG_FUNCTION_ARGS)
+
+PG_FUNCTION_INFO_V1(email_cmp);
+Datum email_cmp(PG_FUNCTION_ARGS)
 {
+
 	char* aLocal ;
 	char* bLocal ;
 	char* aDomain ;
@@ -831,10 +804,10 @@ email_cmp(PG_FUNCTION_ARGS)
 	if (result == 0) {
 		result = strcmp(aLocal, bLocal);
 	}
-
-
+	
 	PG_FREE_IF_COPY(a, 0);
 	PG_FREE_IF_COPY(b, 1);
+
 	PG_RETURN_INT32(result);
 }
 
@@ -862,9 +835,8 @@ email_hash(PG_FUNCTION_ARGS)
 	
         result = hash_any((unsigned char *) str, len);
 	pfree(str);
-	// Avoid leaking memory for toasted inputs 
-	
-	PG_FREE_IF_COPY(email, 0);
+	// Avoid leaking memory for toasted inputs 	
+	//PG_FREE_IF_COPY(email, 0);
 	PG_RETURN_DATUM(result);
 }
 

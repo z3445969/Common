@@ -1,87 +1,45 @@
 ---------------------------------------------------------------------------
 --
 -- email.sql-
---    This file shows how to create a new user-defined type and how to
---    use this new type.
---
---
--- Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
--- Portions Copyright (c) 1994, Regents of the University of California
---
 -- src/tutorial/email.source
 --
 ---------------------------------------------------------------------------
 
------------------------------
--- Creating a new type:
---	We are going to create a new type called 'email' which represents
---	email address.
---	A user-defined type must have an input and an output function, and
---	optionally can have binary input and output functions.  All of these
---	are usually user-defined C functions.
------------------------------
 
--- Assume the user defined functions are in _OBJWD_/email$DLSUFFIX
--- (we do not want to assume this is in the dynamic loader search path).
--- Look at $PWD/email.c for the source.  Note that we declare all of
--- them as STRICT, so we do not need to cope with NULL inputs in the
--- C code.  We also mark them IMMUTABLE, since they always return the
--- same outputs given the same inputs.
-
--- the input function 'email_in' takes a null-terminated string (the
--- textual representation of the type) and turns it into the internal
--- (in memory) representation. You will get a message telling you 'email'
--- does not exist yet but that's okay.
 
 CREATE FUNCTION email_in(cstring)
    RETURNS EmailAddress
    AS '_OBJWD_/email'
    LANGUAGE C IMMUTABLE STRICT;
 
--- the output function 'email_out' takes the internal representation and
--- converts it into the textual representation.
-
 CREATE FUNCTION email_out(EmailAddress)
    RETURNS cstring
    AS '_OBJWD_/email'
    LANGUAGE C IMMUTABLE STRICT;
 
--- the binary input function 'email_recv' takes a StringInfo buffer
--- and turns its contents into the internal representation.
 
 CREATE FUNCTION email_recv(internal)
    RETURNS EmailAddress
    AS '_OBJWD_/email'
    LANGUAGE C IMMUTABLE STRICT;
 
--- the binary output function 'email_send' takes the internal representation
--- and converts it into a (hopefully) platform-independent bytea string.
 
 CREATE FUNCTION email_send(EmailAddress)
    RETURNS bytea
    AS '_OBJWD_/email'
    LANGUAGE C IMMUTABLE STRICT;
 
-
--- now, we can create the type.
-
 CREATE TYPE EmailAddress (
    input = email_in,
    output = email_out,
    receive = email_recv,
    send = email_send,
-   INTERNALLENGTH = 130
+   storage = plain,
+   INTERNALLENGTH = 260
 );
 
 
------------------------------
--- Interfacing New Types with Indexes:
---	We cannot define a secondary index (eg. a B-tree) over the new type
---	yet. We need to create all the required operators and support
---      functions, then we can make the operator class.
------------------------------
-
--- first, define the required operators
+-- define the required operators
 CREATE FUNCTION email_lt(EmailAddress, EmailAddress) RETURNS bool
    AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION email_lt_eq(EmailAddress, EmailAddress) RETURNS bool
@@ -95,12 +53,14 @@ CREATE FUNCTION email_gt_eq(EmailAddress, EmailAddress) RETURNS bool
 CREATE FUNCTION email_gt(EmailAddress, EmailAddress) RETURNS bool
    AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
 
---Domain compare declaration
+--domain compare declaration
 CREATE FUNCTION email_domain_eq(EmailAddress, EmailAddress) RETURNS bool
    AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION email_not_domain_eq(EmailAddress, EmailAddress) RETURNS bool
    AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
 
+
+--create and register the operator to the EmaillAddress type
 CREATE OPERATOR < (
    leftarg = EmailAddress, rightarg = EmailAddress, procedure = email_lt,
    commutator = > , negator = >= ,
@@ -160,7 +120,7 @@ CREATE FUNCTION email_hash(EmailAddress) RETURNS int4
 
 -- now we can make the operator class
 -- for btree
-CREATE OPERATOR CLASS email_ops
+CREATE OPERATOR CLASS email_ops_btree
     DEFAULT FOR TYPE EmailAddress USING btree AS
         OPERATOR        1       < ,
         OPERATOR        2       <= ,
@@ -170,7 +130,7 @@ CREATE OPERATOR CLASS email_ops
         FUNCTION        1       email_cmp(EmailAddress, EmailAddress);
 
 -- for hash
-CREATE OPERATOR CLASS email_ops
+CREATE OPERATOR CLASS email_ops_hash
     DEFAULT FOR TYPE EmailAddress USING hash AS
     OPERATOR    1   =  ,
     FUNCTION    1   email_hash(EmailAddress);
